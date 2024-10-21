@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Realtime API Demo</title>
+    <script defer src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+</head>
+<body>
+    <h1>Realtime Speech Demo with OpenAI API</h1>
+    <button id="startButton">Start Recording</button>
+    <button id="stopButton" disabled>Stop Recording</button>
+    <p id="response"></p>
+
+    <script>
+        const startButton = document.getElementById("startButton");
+        const stopButton = document.getElementById("stopButton");
+        const responseText = document.getElementById("response");
+        let webSocket;
+        let audioStream;
+        let audioContext;
+        let processor;
+
+        startButton.addEventListener("click", () => {
+            if (!webSocket || webSocket.readyState !== WebSocket.OPEN) {
+                webSocket = new WebSocket('wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01', {
+    headers: {
+        "Authorization": "Bearer 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"
+    }
+});
+                webSocket.onopen = () => {
+                    console.log("WebSocket connection established");
+                    startRecording();
+                    startButton.disabled = true;
+                    stopButton.disabled = false;
+                };
+                webSocket.onmessage = (event) => {
+                    const responseData = JSON.parse(event.data);
+                    responseText.textContent = responseData.text;
+                };
+                webSocket.onerror = (error) => {
+                    console.error("WebSocket error: ", error);
+                };
+            }
+        });
+
+        stopButton.addEventListener("click", () => {
+            stopRecording();
+            startButton.disabled = false;
+            stopButton.disabled = true;
+        });
+
+        function startRecording() {
+            navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
+                audioStream = stream;
+                audioContext = new AudioContext();
+                const source = audioContext.createMediaStreamSource(stream);
+                processor = audioContext.createScriptProcessor(4096, 1, 1);
+                source.connect(processor);
+                processor.connect(audioContext.destination);
+
+                processor.onaudioprocess = (event) => {
+                    if (webSocket && webSocket.readyState === WebSocket.OPEN) {
+                        const audioData = event.inputBuffer.getChannelData(0);
+                        // Convert audio data to Float32Array and send it
+                        webSocket.send(audioData.buffer);
+                    }
+                };
+            }).catch((error) => {
+                console.error("Error accessing microphone: ", error);
+            });
+        }
+
+        function stopRecording() {
+            if (audioStream) {
+                audioStream.getTracks().forEach(track => track.stop());
+            }
+            if (processor) {
+                processor.disconnect();
+            }
+            if (audioContext) {
+                audioContext.close();
+            }
+            if (webSocket && webSocket.readyState === WebSocket.OPEN) {
+                webSocket.close();
+            }
+        }
+    </script>
+</body>
+</html>
